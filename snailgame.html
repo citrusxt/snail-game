@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>蜗牛生存挑战</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+        body { background: #0a0a12; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; min-height: 100vh; padding: 10px; overflow: hidden; touch-action: none; }
+        .game-wrapper { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 8px; height: 100vh; justify-content: space-between; padding-bottom: env(safe-area-inset-bottom); }
+        .ui-panel { width: 100%; color: #fff; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 8px 10px; background: #0f1828; border: 2px solid #3399ff; border-radius: 8px; font-weight: 600; font-size: 12px; box-shadow: 0 0 15px rgba(51,153,255,0.15); }
+        .ui-panel span { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+        .ui-panel .label { color: #88bbff; font-weight: 400; font-size: 10px; margin-bottom: 1px; }
+        .ui-panel .value { color: #fff; font-weight: 700; font-size: 13px; }
+        .value.danger { color: #ff5555; animation: pulse 0.5s ease-in-out infinite alternate; }
+        .value.warning { color: #ffaa33; }
+        @keyframes pulse { 0% { opacity: 1; } 100% { opacity: 0.4; } }
+        .game-container { position: relative; width: 100%; flex: 1; display: flex; align-items: center; justify-content: center; }
+        #gameCanvas { width: 100%; height: auto; aspect-ratio: 450 / 700; border: 3px solid #44ddff; border-radius: 8px; box-shadow: 0 0 25px rgba(34,170,255,0.25); background: #0a1a0a; touch-action: none; display: block; }
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 20; padding: 15px; border-radius: 8px; }
+        .overlay.hidden { display: none !important; }
+        .overlay-card { background: #0f1a28; border: 2px solid #44ddff; border-radius: 16px; padding: 24px 16px; width: 100%; text-align: center; color: #fff; box-shadow: 0 0 40px rgba(68,221,255,0.2); }
+        .overlay-card h1 { font-size: 28px; margin-bottom: 6px; background: linear-gradient(135deg, #44ddff, #88ffaa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .overlay-card .subtitle { color: #88bbff; font-size: 13px; margin-bottom: 16px; line-height: 1.6; }
+        .btn-primary { background: linear-gradient(135deg, #22aaff, #44dd88); border: none; color: #0a0a12; font-weight: 700; font-size: 17px; padding: 12px 32px; border-radius: 40px; cursor: pointer; width: 70%; margin: 0 auto; display: block; }
+        .star-rating { font-size: 22px; letter-spacing: 4px; margin: 4px 0; }
+        .star-rating .star { color: #ffaa33; }
+        .star-rating .star.empty { color: #334455; }
+        .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; text-align: left; margin: 12px 0; font-size: 13px; }
+        .stats .stat-label { color: #88bbff; }
+        .stats .stat-value { color: #fff; font-weight: 700; text-align: right; }
+        .stats .stat-value.highlight { color: #ffdd44; }
+        .bottom-bar { width: 100%; display: flex; flex-direction: column; gap: 4px; align-items: center; }
+        .sub-control-bar { width: 100%; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #88bbff; padding: 2px 4px; flex-wrap: wrap; gap: 4px; }
+        .sub-control-bar .hint { font-size: 11px; color: #6699bb; }
+        .ctrl-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+        .ctrl-btn { background: #1a2a3a; border: 1px solid #446688; color: #aaddff; padding: 4px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 3px; white-space: nowrap; }
+        .ctrl-btn.active { border-color: #44ddff; background: #1a3a4a; box-shadow: 0 0 8px rgba(68,221,255,0.2); }
+        .ctrl-btn.off { border-color: #664444; color: #886666; background: #1a1a1a; }
+        .ctrl-btn .badge { font-size: 14px; }
+        .overlay-card .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; text-align: left; margin: 12px 0; font-size: 13px; }
+        .overlay-card .stats .stat-label { color: #88bbff; }
+        .overlay-card .stats .stat-value { color: #fff; font-weight: 700; text-align: right; }
+        .overlay-card .stats .stat-value.highlight { color: #ffdd44; }
+        @media (max-width:400px) { .ui-panel { grid-template-columns: repeat(3,1fr); gap:2px; padding:6px 6px; font-size:10px; } .ui-panel .label { font-size:9px; } .ui-panel .value { font-size:11px; } .ctrl-btn { font-size:10px; padding:3px 7px; } .overlay-card h1 { font-size:22px; } .btn-primary { font-size:15px; padding:10px 24px; width:80%; } }
+    </style>
+</head>
+<body>
+    <div class="game-wrapper">
+        <div class="ui-panel">
+            <span><span class="label">❤️ 生命</span> <span class="value" id="hpText">100</span></span>
+            <span><span class="label">💧 湿度</span> <span class="value" id="wetText">100.0</span></span>
+            <span><span class="label">🌀 陷阱</span> <span class="value" id="trapStatus">0</span></span>
+            <span><span class="label">⭐ 得分</span> <span class="value" id="scoreText">0</span></span>
+            <span><span class="label">🔥 倍率</span> <span class="value" id="multiText">×1.0</span></span>
+            <span><span class="label">🏆 纪录</span> <span class="value" id="highText">0</span></span>
+        </div>
+        <div class="game-container">
+            <canvas id="gameCanvas" width="450" height="700"></canvas>
+            <div class="overlay" id="startOverlay">
+                <div class="overlay-card">
+                    <h1>🐌 蜗牛生存挑战</h1>
+                    <div class="subtitle">拖拽移动 · 躲避陷阱 · 收集资源</div>
+                    <button class="btn-primary" id="btnStart">▶ 开始</button>
+                </div>
+            </div>
+            <div class="overlay hidden" id="endOverlay">
+                <div class="overlay-card">
+                    <h1>⏳ 时间到</h1>
+                    <div class="star-rating" id="starRating"></div>
+                    <div style="font-size:17px;font-weight:700;color:#ffdd44;" id="finalTitle">-</div>
+                    <div class="stats">
+                        <span class="stat-label">🏅 最终得分</span>
+                        <span class="stat-value highlight" id="finalScore">0</span>
+                        <span class="stat-label">⏱️ 存活时间</span>
+                        <span class="stat-value" id="finalTime">0s</span>
+                        <span class="stat-label">🏆 最高纪录</span>
+                        <span class="stat-value highlight" id="finalHigh">0</span>
+                        <span class="stat-label">📊 难度等级</span>
+                        <span class="stat-value" id="finalDifficulty">1</span>
+                    </div>
+                    <button class="btn-primary" id="btnRestart2">🔄 再来一局</button>
+                </div>
+            </div>
+        </div>
+        <div class="bottom-bar">
+            <div class="sub-control-bar">
+                <span class="hint">☝️ 手指拖动</span>
+                <div class="ctrl-group">
+                    <button class="ctrl-btn active" id="musicToggle"><span class="badge">🎵</span> 音乐</button>
+                    <button class="ctrl-btn active" id="sfxToggle"><span class="badge">🔊</span> 音效</button>
+                    <button class="ctrl-btn" id="btnRestart"><span class="badge">🔄</span> 重开</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        'use strict';
+        // ============================================================
+        //  音频系统 (完整保留)
+        // ============================================================
+        const AudioSystem = (() => {
+            let audioCtx = null, masterGain = null, musicGain = null, sfxGain = null;
+            let musicEnabled = true, sfxEnabled = true;
+            let bgmTimer = null, bgmRunning = false, beatIndex = 0, chordIndex = 0, beatCount = 0;
+            const A2 = 110, A3 = 220, C3 = 130.81, C4 = 261.63, D4 = 293.66, E3 = 164.81, E4 = 329.63, F3 = 174.61, F4 = 349.23, G3 = 196.00, G4 = 392.00, A4 = 440, B4 = 493.88, C5 = 523.25, D5 = 587.33, E5 = 659.25, F5 = 698.46, G5 = 783.99, A5 = 880;
+            const CHORD_PROG = [{ name: 'Am', notes: [A3, C4, E4], bass: A2, pattern: [A3, C4, E4, A4] }, { name: 'F', notes: [F4, A4, C5], bass: F3, pattern: [F4, A4, C5, F5] }, { name: 'C', notes: [C4, E4, G4], bass: C3, pattern: [C4, E4, G4, C5] }, { name: 'G', notes: [G4, B4, D5], bass: G3, pattern: [G4, B4, D5, G5] }];
+            const MELODY_SCALE = [A4, C5, D5, E5, G5, A5];
+            const MELODY_PATTERN = [0, 2, 4, 5, 4, 2, 1, 3];
+            const RHYTHM_PATTERN = [{ kick: 1, snare: 0, hat: 1 }, { kick: 0, snare: 1, hat: 1 }, { kick: 1, snare: 0, hat: 1 }, { kick: 0, snare: 1, hat: 1 }, { kick: 1, snare: 0, hat: 1 }, { kick: 0, snare: 1, hat: 1 }, { kick: 1, snare: 0, hat: 1 }, { kick: 0, snare: 1, hat: 1 }];
+            const BPM = 135, BEAT_DURATION = 60 / BPM;
+            function initAudio() { try { if (audioCtx) return; audioCtx = new(window.AudioContext || window.webkitAudioContext)(); masterGain = audioCtx.createGain(); masterGain.gain.value = 0.5; masterGain.connect(audioCtx.destination); musicGain = audioCtx.createGain(); musicGain.gain.value = musicEnabled ? 0.4 : 0; musicGain.connect(masterGain); sfxGain = audioCtx.createGain(); sfxGain.gain.value = sfxEnabled ? 0.5 : 0; sfxGain.connect(masterGain); } catch (e) { console.warn("音频受限:", e); } }
+            function ensureCtx() { if (!audioCtx) initAudio(); if (audioCtx && audioCtx.state === 'suspended') { audioCtx.resume().catch(() => {}); } }
+            function playNote(freq, type = 'sine', duration = 0.15, volume = 0.25, gainNode = null) { if (!audioCtx) return; try { const osc = audioCtx.createOscillator(); const g = audioCtx.createGain(); osc.type = type; osc.frequency.value = freq; g.gain.setValueAtTime(volume, audioCtx.currentTime); g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration); osc.connect(g); const target = gainNode || musicGain; if (target) g.connect(target); osc.start(); osc.stop(audioCtx.currentTime + duration + 0.02); } catch (e) {} }
+            function playChord(freqs, duration = 0.2, volume = 0.15) { if (!musicEnabled || !audioCtx) return; for (const f of freqs) playNote(f, 'sine', duration, volume, musicGain); }
+            function playRhythm(type) { if (!musicEnabled || !audioCtx) return; const now = audioCtx.currentTime; try { if (type === 'kick') { const osc = audioCtx.createOscillator(), g = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(120, now); osc.frequency.linearRampToValueAtTime(40, now + 0.08); g.gain.setValueAtTime(0.35, now); g.gain.linearRampToValueAtTime(0, now + 0.08); osc.connect(g); g.connect(musicGain); osc.start(now); osc.stop(now + 0.09); } else if (type === 'snare') { const bufferSize = audioCtx.sampleRate * 0.06; const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate); const data = buffer.getChannelData(0); for (let i = 0; i < bufferSize; i++) { data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.2)); } const noise = audioCtx.createBufferSource(); noise.buffer = buffer; const g = audioCtx.createGain(); g.gain.setValueAtTime(0.3, now); g.gain.linearRampToValueAtTime(0, now + 0.06); noise.connect(g); g.connect(musicGain); noise.start(now); noise.stop(now + 0.07); } else if (type === 'hat') { const bufferSize = audioCtx.sampleRate * 0.03; const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate); const data = buffer.getChannelData(0); for (let i = 0; i < bufferSize; i++) { data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.1)); } const noise = audioCtx.createBufferSource(); noise.buffer = buffer; const g = audioCtx.createGain(); g.gain.setValueAtTime(0.15, now); g.gain.linearRampToValueAtTime(0, now + 0.025); noise.connect(g); g.connect(musicGain); noise.start(now); noise.stop(now + 0.03); } } catch (e) {} }
+            function playBeat() { if (!bgmRunning || !musicEnabled || !audioCtx) return; const chord = CHORD_PROG[chordIndex]; const pattern = chord.pattern; const pIdx = beatIndex % pattern.length; const melodyIdx = MELODY_PATTERN[beatIndex % MELODY_PATTERN.length]; const rhythm = RHYTHM_PATTERN[beatIndex % RHYTHM_PATTERN.length]; playNote(pattern[pIdx], 'sine', 0.18, 0.2, musicGain); if (beatIndex % 2 === 0) playNote(chord.bass, 'square', 0.25, 0.18, musicGain); if (beatIndex % 2 === 0) { const melFreq = MELODY_SCALE[melodyIdx % MELODY_SCALE.length]; playNote(melFreq, 'sine', 0.2, 0.16, musicGain); } if (rhythm.kick) playRhythm('kick'); if (rhythm.snare) playRhythm('snare'); if (rhythm.hat) playRhythm('hat'); if (beatIndex % 4 === 0) { const chordFreqs = chord.notes.map(n => n * 0.5); playChord(chordFreqs, 0.3, 0.1); } beatIndex++; beatCount++; if (beatIndex % 4 === 0) chordIndex = (chordIndex + 1) % CHORD_PROG.length; bgmTimer = setTimeout(() => { if (bgmRunning) playBeat(); }, BEAT_DURATION * 1000); }
+            function startBGM() { stopBGM(); if (!musicEnabled) return; ensureCtx(); if (!audioCtx) return; bgmRunning = true; beatIndex = 0; chordIndex = 0; beatCount = 0; setTimeout(() => { if (bgmRunning) playBeat(); }, 50); }
+            function stopBGM() { bgmRunning = false; if (bgmTimer) { clearTimeout(bgmTimer); bgmTimer = null; } }
+            function toggleMusic() { musicEnabled = !musicEnabled; if (musicGain) musicGain.gain.value = musicEnabled ? 0.4 : 0; if (musicEnabled) startBGM(); else stopBGM(); return musicEnabled; }
+            function toggleSfx() { sfxEnabled = !sfxEnabled; if (sfxGain) sfxGain.gain.value = sfxEnabled ? 0.5 : 0; return sfxEnabled; }
+            function playSound(type) { if (!sfxEnabled || !audioCtx) return; ensureCtx(); if (audioCtx.state === 'suspended') audioCtx.resume(); try { const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); gain.gain.value = 0.25; osc.connect(gain); gain.connect(sfxGain); const now = audioCtx.currentTime; switch (type) { case 'start': osc.type = 'sine'; osc.frequency.setValueAtTime(320, now); osc.frequency.linearRampToValueAtTime(520, now + 0.3); gain.gain.setValueAtTime(0.3, now); gain.gain.linearRampToValueAtTime(0, now + 0.4); osc.start(now); osc.stop(now + 0.4); break; case 'dew': osc.type = 'sine'; osc.frequency.setValueAtTime(680, now); osc.frequency.linearRampToValueAtTime(900, now + 0.12); gain.gain.setValueAtTime(0.18, now); gain.gain.linearRampToValueAtTime(0, now + 0.15); osc.start(now); osc.stop(now + 0.15); break; case 'moss': osc.type = 'sine'; osc.frequency.setValueAtTime(420, now); osc.frequency.linearRampToValueAtTime(600, now + 0.15); gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now + 0.18); osc.start(now); osc.stop(now + 0.18); break; case 'leaf': osc.type = 'sine'; osc.frequency.setValueAtTime(500, now); osc.frequency.linearRampToValueAtTime(750, now + 0.13); gain.gain.setValueAtTime(0.19, now); gain.gain.linearRampToValueAtTime(0, now + 0.16); osc.start(now); osc.stop(now + 0.16); break; case 'salt': osc.type = 'sawtooth'; osc.frequency.setValueAtTime(120, now); osc.frequency.linearRampToValueAtTime(60, now + 0.22); gain.gain.setValueAtTime(0.32, now); gain.gain.linearRampToValueAtTime(0, now + 0.28); osc.start(now); osc.stop(now + 0.28); break; case 'beetle': osc.type = 'square'; osc.frequency.setValueAtTime(90, now); gain.gain.setValueAtTime(0.25, now); gain.gain.linearRampToValueAtTime(0, now + 0.12); osc.start(now); osc.stop(now + 0.12); break; case 'weather': osc.type = 'triangle'; osc.frequency.setValueAtTime(220, now); osc.frequency.linearRampToValueAtTime(380, now + 0.5); gain.gain.setValueAtTime(0.2, now); gain.gain.linearRampToValueAtTime(0, now + 0.55); osc.start(now); osc.stop(now + 0.55); break; case 'gameover': osc.type = 'sawtooth'; osc.frequency.setValueAtTime(360, now); osc.frequency.linearRampToValueAtTime(100, now + 0.8); gain.gain.setValueAtTime(0.3, now); gain.gain.linearRampToValueAtTime(0, now + 0.9); osc.start(now); osc.stop(now + 0.9); break; default: osc.disconnect(); return; } } catch (e) {} }
+            function getMusicState() { return musicEnabled; }
+            function getSfxState() { return sfxEnabled; }
+            initAudio();
+            return { initAudio, startBGM, stopBGM, toggleMusic, toggleSfx, playSound, getMusicState, getSfxState, ensureCtx };
+        })();
+
+        // ============================================================
+        //  DOM 与 游戏核心
+        // ============================================================
+        const DOM = {
+            canvas: document.getElementById('gameCanvas'),
+            hpText: document.getElementById('hpText'),
+            wetText: document.getElementById('wetText'),
+            trapStatus: document.getElementById('trapStatus'),
+            scoreText: document.getElementById('scoreText'),
+            multiText: document.getElementById('multiText'),
+            highText: document.getElementById('highText'),
+            musicToggle: document.getElementById('musicToggle'),
+            sfxToggle: document.getElementById('sfxToggle'),
+            startOverlay: document.getElementById('startOverlay'),
+            endOverlay: document.getElementById('endOverlay'),
+            btnStart: document.getElementById('btnStart'),
+            btnRestart: document.getElementById('btnRestart'),
+            btnRestart2: document.getElementById('btnRestart2'),
+            finalScore: document.getElementById('finalScore'),
+            finalTime: document.getElementById('finalTime'),
+            finalHigh: document.getElementById('finalHigh'),
+            finalDifficulty: document.getElementById('finalDifficulty'),
+            starRating: document.getElementById('starRating'),
+            finalTitle: document.getElementById('finalTitle')
+        };
+        const canvas = DOM.canvas;
+        const ctx = canvas.getContext('2d');
+
+        const CFG = {
+            saltDamage: 20,
+            beetleDmg: 15,
+            difficultyStepTime: 15000,
+            maxMulti: 3.0,
+            trailLength: 12,
+            beetleHitCd: 800,
+            maxParticleCount: 100,
+            trapSpeedMultiplier: 1.0,
+            trapMaxCount: 3,
+            trapSpawnIntervalMin: 2000,
+            trapSpawnIntervalMax: 5000,
+            trapLifetimeMin: 5000,
+            trapLifetimeMax: 10000,
+            trapBaseRadiusMin: 30,
+            trapBaseRadiusMax: 100,
+            trapBreatheAmplitudeMin: 30,
+            trapBreatheAmplitudeMax: 40,
+            trapMoistureDrain: 0.2,
+            followSpeed: 0.08,
+            maxSpeed: 1.5,
+            naturalWetDecay: 1.3,
+            droughtChance: 0.25,
+            droughtDuration: 8000,
+            droughtMultiplier: 2.0,
+            beetleMaxCount: 5,
+            // 甲虫感知追踪参数
+            beetleDetectionRadius: 130,
+            beetleChaseDuration: 4500,
+            beetleIdleSpeed: 1.0,
+            beetleIdleChangeInterval: 2000,
+            beetleChaseSpeedBase: 1.2,
+            beetleChaseSpeedPerLevel: 0.15,
+            beetleChaseMaxSpeed: 3.5,
+            beetleTurnNoise: 0.3,
+            droughtDewRefreshRate: 0.3,
+            // 排斥力参数
+            beetleRepulsionRadius: 35,
+            beetleRepulsionStrength: 0.8
+        };
+
+        let highScore = 0;
+        try { highScore = parseInt(localStorage.getItem('snailHigh')) || 0; } catch (e) {}
+        DOM.highText.textContent = highScore;
+
+        const pool = { particles: [], floatTexts: [] };
+        let game = null, snail = null;
+        let dewList = [], mossList = [], saltList = [], plantList = [], beetleList = [];
+        let gameRunning = false, animFrameId = null, globalTick = 0;
+        let mousePos = { x: 225, y: 350 };
+        let lastFrameTime = performance.now();
+
+        function rand(min, max) { return Math.random() * (max - min) + min; }
+        function randPos(pad = 40) { return { x: rand(pad, canvas.width - pad), y: rand(pad, canvas.height - pad) }; }
+        function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+        function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+        // ---- 陷阱 ----
+        function createTrap() {
+            const baseRadius = rand(CFG.trapBaseRadiusMin, CFG.trapBaseRadiusMax);
+            const amplitude = rand(CFG.trapBreatheAmplitudeMin, CFG.trapBreatheAmplitudeMax);
+            const lifetime = rand(CFG.trapLifetimeMin, CFG.trapLifetimeMax);
+            const pos = randPos(50);
+            return { x: pos.x, y: pos.y, baseRadius, amplitude, phase: rand(0, Math.PI * 2), timer: 0, lifetime, alive: true };
+        }
+        function spawnTrapIfNeeded() {
+            if (!game) return;
+            const activeTraps = game.traps.filter(t => t.alive);
+            if (activeTraps.length >= CFG.trapMaxCount) return;
+            if (!game.trapSpawnTimer) game.trapSpawnTimer = 0;
+            game.trapSpawnTimer += 16.67;
+            const interval = rand(CFG.trapSpawnIntervalMin, CFG.trapSpawnIntervalMax);
+            if (game.trapSpawnTimer >= interval) { game.trapSpawnTimer = 0; game.traps.push(createTrap()); }
+        }
+        function updateTraps(dt) {
+            if (!game) return;
+            for (const trap of game.traps) { if (!trap.alive) continue; trap.timer += dt; if (trap.timer >= trap.lifetime) { trap.alive = false; continue; } trap.phase += dt * 0.005 * CFG.trapSpeedMultiplier; }
+            game.traps = game.traps.filter(t => t.alive);
+            DOM.trapStatus.textContent = game.traps.length;
+        }
+        function getCurrentTrapRadius(trap) { let r = trap.baseRadius + trap.amplitude * Math.sin(trap.phase); return Math.max(1, r); }
+        function isInsideAnyTrap(x, y) {
+            if (!game) return false;
+            for (const trap of game.traps) { const r = getCurrentTrapRadius(trap); if (r <= 0) continue; if (Math.hypot(x - trap.x, y - trap.y) < r) return true; }
+            return false;
+        }
+
+        // ---- 粒子 ----
+        function emitParticles(x, y, color, count = 8, speed = 2.5) {
+            const maxAdd = Math.min(count, CFG.maxParticleCount - pool.particles.length);
+            for (let i = 0; i < maxAdd; i++) { const angle = rand(0, Math.PI * 2); const spd = rand(0.5, speed); pool.particles.push({ x, y, vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd, life: rand(15, 25), maxLife: 25, r: rand(1.5, 3), color }); }
+        }
+        function updateParticles() { pool.particles = pool.particles.filter(p => { p.x += p.vx; p.y += p.vy; p.life--; return p.life > 0; }); }
+        function drawParticles() { ctx.save(); for (const p of pool.particles) { ctx.globalAlpha = p.life / p.maxLife; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill(); } ctx.restore(); }
+        function addFloatText(x, y, text, color = '#fff') { pool.floatTexts.push({ x, y, text, color, life: 30, vy: -1 }); }
+        function updateFloatTexts() { pool.floatTexts = pool.floatTexts.filter(t => { t.y += t.vy; t.life--; return t.life > 0; }); }
+        function drawFloatTexts() { ctx.save(); ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center'; for (const t of pool.floatTexts) { ctx.globalAlpha = Math.min(1, t.life / 8); ctx.fillStyle = t.color; ctx.fillText(t.text, t.x, t.y); } ctx.restore(); }
+
+        // ---- 绘制 ----
+        function drawTraps() {
+            if (!game) return;
+            for (const trap of game.traps) {
+                const r = getCurrentTrapRadius(trap);
+                if (r <= 0) continue;
+                ctx.save();
+                ctx.shadowBlur = 40;
+                ctx.shadowColor = 'rgba(180,80,255,0.3)';
+                ctx.strokeStyle = 'rgba(180,80,255,0.6)';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([8, 12]);
+                ctx.beginPath();
+                ctx.arc(trap.x, trap.y, r, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(120,40,200,0.08)';
+                ctx.beginPath();
+                ctx.arc(trap.x, trap.y, r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+        function drawObjects() {
+            const inTrap = (x, y) => isInsideAnyTrap(x, y);
+            for (const d of dewList) {
+                if (inTrap(d.x, d.y)) continue;
+                ctx.save();
+                const grad = ctx.createRadialGradient(d.x - d.r * 0.3, d.y - d.r * 0.3, 0, d.x, d.y, d.r);
+                grad.addColorStop(0, '#ffffff');
+                grad.addColorStop(1, '#22aaff');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.moveTo(d.x, d.y - d.r * 1.2);
+                ctx.bezierCurveTo(d.x - d.r, d.y, d.x - d.r, d.y + d.r, d.x, d.y + d.r);
+                ctx.bezierCurveTo(d.x + d.r, d.y + d.r, d.x + d.r, d.y, d.x, d.y - d.r * 1.2);
+                ctx.fill();
+                ctx.restore();
+            }
+            for (const m of mossList) {
+                if (inTrap(m.x, m.y)) continue;
+                ctx.save();
+                ctx.fillStyle = '#338822';
+                ctx.beginPath();
+                ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#55aa33';
+                ctx.beginPath();
+                ctx.arc(m.x - 3, m.y - 2, m.r * 0.7, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+            for (const p of plantList) {
+                if (inTrap(p.x, p.y)) continue;
+                ctx.save();
+                ctx.fillStyle = '#44dd88';
+                ctx.translate(p.x, p.y);
+                ctx.rotate(0.5);
+                ctx.beginPath();
+                ctx.ellipse(0, 0, p.r * 1.4, p.r * 0.7, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+            for (const s of saltList) {
+                if (inTrap(s.x, s.y)) continue;
+                ctx.save();
+                const grad = ctx.createLinearGradient(s.x, s.y - s.r, s.x, s.y + s.r);
+                grad.addColorStop(0, '#ffffff');
+                grad.addColorStop(1, '#b0c0d0');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.moveTo(s.x, s.y - s.r);
+                ctx.lineTo(s.x + s.r * 1.2, s.y + s.r);
+                ctx.lineTo(s.x - s.r * 1.2, s.y + s.r);
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            }
+            // ---- 甲虫绘制（增强外观） ----
+            for (const b of beetleList) {
+                if (inTrap(b.x, b.y)) continue;
+                ctx.save();
+                // 发光效果
+                ctx.shadowBlur = 18;
+                ctx.shadowColor = '#ff6622';
+                // 身体：橙红色，带渐变
+                const grad = ctx.createRadialGradient(b.x - 4, b.y - 4, 2, b.x, b.y, b.r + 2);
+                grad.addColorStop(0, '#ff8833');
+                grad.addColorStop(0.7, '#cc4411');
+                grad.addColorStop(1, '#882200');
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+                ctx.fill();
+                // 甲壳花纹 (两条弧线)
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = 'rgba(255,200,100,0.5)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(b.x - 3, b.y - 3, b.r * 0.5, 0, Math.PI * 0.8);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(b.x + 3, b.y + 2, b.r * 0.4, Math.PI * 0.2, Math.PI * 1.0);
+                ctx.stroke();
+                // 眼睛 (白色底色+黑色瞳孔)
+                const eyeOff = b.r * 0.5;
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(b.x - eyeOff, b.y - 3, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(b.x + eyeOff, b.y - 3, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#111';
+                ctx.beginPath();
+                ctx.arc(b.x - eyeOff + 1.5, b.y - 2, 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(b.x + eyeOff + 1.5, b.y - 2, 2, 0, Math.PI * 2);
+                ctx.fill();
+                // 触角
+                ctx.strokeStyle = '#552200';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(b.x - 4, b.y - b.r + 2);
+                ctx.lineTo(b.x - 10, b.y - b.r - 8);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(b.x + 4, b.y - b.r + 2);
+                ctx.lineTo(b.x + 10, b.y - b.r - 8);
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+        function drawSnail() {
+            if (!snail) return;
+            if (snail.trail.length > 1) { ctx.strokeStyle = 'rgba(68,221,255,0.2)'; ctx.lineWidth = 4; ctx.beginPath(); for (let i = 0; i < snail.trail.length; i++) { if (i === 0) ctx.moveTo(snail.trail[i].x, snail.trail[i].y); else ctx.lineTo(snail.trail[i].x, snail.trail[i].y); } ctx.stroke(); }
+            const sx = snail.x, sy = snail.y, r = snail.radius;
+            ctx.save();
+            if (snail.hitFlash > 0 && Math.floor(globalTick / 4) % 2 === 0) ctx.fillStyle = '#ff3333';
+            else ctx.fillStyle = '#55cc66';
+            ctx.beginPath();
+            ctx.ellipse(sx, sy, r * 1.3, r, 0, 0, Math.PI * 2);
+            ctx.fill();
+            const shellGrad = ctx.createRadialGradient(sx - r * 0.5, sy - r * 0.4, 0, sx - r * 0.5, sy - r * 0.4, r);
+            shellGrad.addColorStop(0, '#ffdd99');
+            shellGrad.addColorStop(1, '#cc7722');
+            ctx.fillStyle = shellGrad;
+            ctx.beginPath();
+            ctx.arc(sx - r * 0.5, sy - r * 0.4, r, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#884400';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(sx - r * 0.5, sy - r * 0.4, r * 0.4, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.strokeStyle = '#ffcc66';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(sx + r * 0.6, sy - r * 0.5);
+            ctx.lineTo(sx + r * 1.2, sy - r * 1.0);
+            ctx.stroke();
+            ctx.fillStyle = '#111';
+            ctx.beginPath();
+            ctx.arc(sx + r * 1.2, sy - r * 1.0, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // ---- 游戏对象初始化 ----
+        function initGameObjects() {
+            dewList = []; mossList = []; saltList = []; plantList = []; beetleList = [];
+            pool.particles = []; pool.floatTexts = [];
+            for (let i = 0; i < 5; i++) dewList.push({ ...randPos(), r: 7 });
+            for (let i = 0; i < 2; i++) mossList.push({ ...randPos(), r: 13 });
+            for (let i = 0; i < 2; i++) saltList.push({ ...randPos(), r: 11 });
+            for (let i = 0; i < 3; i++) plantList.push({ ...randPos(), r: 9 });
+            spawnBeetle(1);
+        }
+        function spawnBeetle(count = 1) {
+            if (beetleList.length >= CFG.beetleMaxCount) return;
+            const maxToSpawn = Math.min(count, CFG.beetleMaxCount - beetleList.length);
+            for (let i = 0; i < maxToSpawn; i++) {
+                const p = randPos(60);
+                const angle = rand(0, Math.PI * 2);
+                beetleList.push({
+                    x: p.x, y: p.y, r: 14, // 增大半径
+                    state: 'idle',
+                    chaseTimer: 0,
+                    idleVx: Math.cos(angle) * CFG.beetleIdleSpeed,
+                    idleVy: Math.sin(angle) * CFG.beetleIdleSpeed,
+                    idleChangeTimer: rand(0, CFG.beetleIdleChangeInterval)
+                });
+            }
+        }
+
+        // ---- 核心引擎 ----
+        function initGame() {
+            game = {
+                score: 0, timeStart: Date.now(), survivalTime: 0,
+                hp: 100, wet: 100, difficulty: 1, difficultyTimer: 0,
+                traps: [], trapSpawnTimer: 0,
+                droughtTimer: 0, isDrought: false
+            };
+            snail = { x: 225, y: 350, radius: 13, trail: [], hitFlash: 0, beetleHitCd: 0 };
+            initGameObjects();
+            game.traps.push(createTrap());
+            updateUIDOM();
+        }
+
+        function updateGame(deltaTime) {
+            globalTick++;
+            const dt = Math.min(deltaTime, 50);
+            game.survivalTime = Math.floor((Date.now() - game.timeStart) / 1000);
+            game.difficultyTimer += dt;
+
+            // 难度升级
+            if (game.difficultyTimer >= CFG.difficultyStepTime) {
+                game.difficultyTimer = 0;
+                game.difficulty++;
+                spawnBeetle(1);
+                if (Math.random() < CFG.droughtChance && !game.isDrought) {
+                    game.isDrought = true;
+                    game.droughtTimer = CFG.droughtDuration;
+                    addFloatText(canvas.width / 2, 120, '🔥 干旱来袭！湿度加速流失！', '#ff8822');
+                    AudioSystem.playSound('weather');
+                }
+                AudioSystem.playSound('weather');
+                addFloatText(canvas.width / 2, 100, `⚠️ 难度升级: LV.${game.difficulty}`, '#ff5555');
+            }
+
+            // 干旱计时
+            if (game.isDrought) {
+                game.droughtTimer -= dt;
+                if (game.droughtTimer <= 0) {
+                    game.isDrought = false;
+                    game.droughtTimer = 0;
+                    addFloatText(canvas.width / 2, 150, '☀️ 干旱结束，湿度流失恢复正常', '#88ccff');
+                }
+            }
+
+            spawnTrapIfNeeded();
+            updateTraps(dt);
+
+            // 蜗牛移动
+            const dx = mousePos.x - snail.x;
+            const dy = mousePos.y - snail.y;
+            const distToMouse = Math.hypot(dx, dy);
+            if (distToMouse > 0.5) {
+                let speed = distToMouse * CFG.followSpeed;
+                speed = Math.min(speed, CFG.maxSpeed);
+                snail.x += (dx / distToMouse) * speed;
+                snail.y += (dy / distToMouse) * speed;
+            }
+            snail.x = clamp(snail.x, snail.radius, canvas.width - snail.radius);
+            snail.y = clamp(snail.y, snail.radius, canvas.height - snail.radius);
+
+            // 湿度变化
+            const inTrap = isInsideAnyTrap(snail.x, snail.y);
+            if (inTrap) game.wet -= CFG.trapMoistureDrain * (dt / 16.67);
+            let decay = CFG.naturalWetDecay;
+            if (game.isDrought) decay *= CFG.droughtMultiplier;
+            game.wet -= decay * (dt / 1000);
+            game.wet = clamp(game.wet, 0, 100);
+
+            // 轨迹
+            if (globalTick % 3 === 0) { snail.trail.push({ x: snail.x, y: snail.y }); if (snail.trail.length > CFG.trailLength) snail.trail.shift(); }
+            if (snail.hitFlash > 0) snail.hitFlash--;
+            if (snail.beetleHitCd > 0) snail.beetleHitCd -= dt;
+
+            const isVisible = (x, y) => !isInsideAnyTrap(x, y);
+
+            // ---- 露水收集（干旱时刷新变慢） ----
+            for (let i = dewList.length - 1; i >= 0; i--) {
+                const d = dewList[i];
+                if (!isVisible(d.x, d.y)) continue;
+                if (dist(snail, d) < snail.radius + d.r) {
+                    AudioSystem.playSound('dew');
+                    game.wet = clamp(game.wet + 10, 0, 100);
+                    game.score += 10;
+                    emitParticles(d.x, d.y, '#44bbff');
+                    let shouldRefresh = true;
+                    if (game.isDrought && Math.random() > CFG.droughtDewRefreshRate) {
+                        shouldRefresh = false;
+                    }
+                    if (shouldRefresh) {
+                        dewList[i] = { ...randPos(), r: 7 };
+                    } else {
+                        dewList.splice(i, 1);
+                    }
+                    addFloatText(d.x, d.y, `💧 +10`, '#44ccff');
+                }
+            }
+
+            // ---- 其他收集物 ----
+            mossList.forEach((m, idx) => {
+                if (!isVisible(m.x, m.y)) return;
+                if (dist(snail, m) < snail.radius + m.r) {
+                    AudioSystem.playSound('moss');
+                    game.hp = clamp(game.hp + 5, 0, 100);
+                    game.score += 25;
+                    emitParticles(m.x, m.y, '#66cc44', 12);
+                    mossList[idx] = { ...randPos(), r: 13 };
+                    addFloatText(m.x, m.y, `🌱 +25`, '#66ff44');
+                }
+            });
+            plantList.forEach((p, idx) => {
+                if (!isVisible(p.x, p.y)) return;
+                if (dist(snail, p) < snail.radius + p.r) {
+                    AudioSystem.playSound('leaf');
+                    game.score += 15;
+                    emitParticles(p.x, p.y, '#aaff66');
+                    plantList[idx] = { ...randPos(), r: 9 };
+                    addFloatText(p.x, p.y, `🍃 +15`, '#aaff44');
+                }
+            });
+            saltList.forEach((s, idx) => {
+                if (!isVisible(s.x, s.y)) return;
+                if (dist(snail, s) < snail.radius + s.r) {
+                    AudioSystem.playSound('salt');
+                    const dmg = CFG.saltDamage;
+                    game.hp = clamp(game.hp - dmg, 0, 100);
+                    game.wet = clamp(game.wet - dmg * 0.5, 0, 100);
+                    snail.hitFlash = 15;
+                    emitParticles(s.x, s.y, '#ffffff', 15);
+                    saltList[idx] = { ...randPos(), r: 11 };
+                    addFloatText(s.x, s.y, `🧂 -${Math.floor(dmg)}`, '#ff3333');
+                }
+            });
+
+            // ---- 甲虫感知追踪 + 排斥力 ----
+            const chaseSpeed = Math.min(
+                CFG.beetleChaseSpeedBase + game.difficulty * CFG.beetleChaseSpeedPerLevel,
+                CFG.beetleChaseMaxSpeed
+            );
+            // 先计算每个甲虫的目标移动（追踪/空闲），再统一叠加排斥力
+            const moves = beetleList.map(b => {
+                const dxb = snail.x - b.x;
+                const dyb = snail.y - b.y;
+                const distToSnail = Math.hypot(dxb, dyb);
+                let moveX = 0, moveY = 0;
+                // 状态切换
+                if (b.state === 'idle') {
+                    if (distToSnail < CFG.beetleDetectionRadius) {
+                        b.state = 'chasing';
+                        b.chaseTimer = CFG.beetleChaseDuration;
+                    }
+                } else {
+                    b.chaseTimer -= dt;
+                    if (b.chaseTimer <= 0) {
+                        b.state = 'idle';
+                        const angle = rand(0, Math.PI * 2);
+                        b.idleVx = Math.cos(angle) * CFG.beetleIdleSpeed;
+                        b.idleVy = Math.sin(angle) * CFG.beetleIdleSpeed;
+                        b.idleChangeTimer = rand(0, CFG.beetleIdleChangeInterval);
+                    }
+                }
+                // 计算基础移动
+                if (b.state === 'chasing') {
+                    if (distToSnail > 1) {
+                        let angle = Math.atan2(dyb, dxb);
+                        angle += rand(-CFG.beetleTurnNoise, CFG.beetleTurnNoise);
+                        const speed = chaseSpeed * (dt / 16.67);
+                        moveX = Math.cos(angle) * speed;
+                        moveY = Math.sin(angle) * speed;
+                    }
+                } else {
+                    b.idleChangeTimer -= dt;
+                    if (b.idleChangeTimer <= 0) {
+                        const angle = rand(0, Math.PI * 2);
+                        b.idleVx = Math.cos(angle) * CFG.beetleIdleSpeed;
+                        b.idleVy = Math.sin(angle) * CFG.beetleIdleSpeed;
+                        b.idleChangeTimer = CFG.beetleIdleChangeInterval + rand(-500, 500);
+                    }
+                    moveX = b.idleVx * (dt / 16.67);
+                    moveY = b.idleVy * (dt / 16.67);
+                }
+                return { beetle: b, moveX, moveY };
+            });
+
+            // 叠加排斥力（多次迭代效果更好）
+            for (let iter = 0; iter < 2; iter++) {
+                for (let i = 0; i < moves.length; i++) {
+                    for (let j = i + 1; j < moves.length; j++) {
+                        const a = moves[i].beetle, b = moves[j].beetle;
+                        const dx = a.x - b.x;
+                        const dy = a.y - b.y;
+                        const dist = Math.hypot(dx, dy);
+                        if (dist < CFG.beetleRepulsionRadius && dist > 0.1) {
+                            const force = (CFG.beetleRepulsionRadius - dist) / CFG.beetleRepulsionRadius * CFG.beetleRepulsionStrength;
+                            const fx = (dx / dist) * force;
+                            const fy = (dy / dist) * force;
+                            moves[i].moveX += fx;
+                            moves[i].moveY += fy;
+                            moves[j].moveX -= fx;
+                            moves[j].moveY -= fy;
+                        }
+                    }
+                }
+            }
+
+            // 应用移动并边界处理
+            moves.forEach(({ beetle: b, moveX, moveY }) => {
+                b.x += moveX;
+                b.y += moveY;
+                if (b.x < b.r || b.x > canvas.width - b.r) {
+                    b.x = clamp(b.x, b.r, canvas.width - b.r);
+                    if (b.state === 'idle') b.idleVx *= -1;
+                }
+                if (b.y < b.r || b.y > canvas.height - b.r) {
+                    b.y = clamp(b.y, b.r, canvas.height - b.r);
+                    if (b.state === 'idle') b.idleVy *= -1;
+                }
+                // 碰撞检测
+                if (isVisible(b.x, b.y) && dist(snail, b) < snail.radius + b.r && snail.beetleHitCd <= 0) {
+                    AudioSystem.playSound('beetle');
+                    snail.beetleHitCd = CFG.beetleHitCd;
+                    snail.hitFlash = 20;
+                    game.hp = clamp(game.hp - CFG.beetleDmg, 0, 100);
+                    addFloatText(snail.x, snail.y - 15, `🪲 -${CFG.beetleDmg}`, '#ff3333');
+                }
+            });
+
+            updateParticles();
+            updateFloatTexts();
+            updateUIDOM();
+
+            if (game.hp <= 0 || game.wet <= 0) gameOver();
+        }
+
+        function updateUIDOM() {
+            DOM.hpText.textContent = Math.ceil(game.hp);
+            DOM.wetText.textContent = game.wet.toFixed(1);
+            DOM.scoreText.textContent = game.score;
+            let multi = clamp(1.0 + (100 - game.wet) / 50, 1, CFG.maxMulti);
+            DOM.multiText.textContent = `×${multi.toFixed(1)}`;
+            DOM.hpText.className = game.hp < 35 ? 'value danger' : 'value';
+            DOM.wetText.className = game.wet < 30 ? 'value warning' : 'value';
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawTraps();
+            drawObjects();
+            drawSnail();
+            drawParticles();
+            drawFloatTexts();
+            if (isInsideAnyTrap(snail.x, snail.y)) {
+                ctx.fillStyle = 'rgba(120,40,200,0.06)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+            if (game && game.isDrought) {
+                ctx.save();
+                ctx.fillStyle = 'rgba(255,100,0,0.08)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ff8822';
+                ctx.font = 'bold 14px system-ui';
+                ctx.textAlign = 'center';
+                ctx.fillText('🔥 干旱中', canvas.width/2, 30);
+                ctx.restore();
+            }
+        }
+
+        function gameLoop(timestamp) {
+            if (!gameRunning) return;
+            const deltaTime = timestamp - lastFrameTime;
+            lastFrameTime = timestamp;
+            updateGame(deltaTime);
+            render();
+            animFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animFrameId);
+            AudioSystem.stopBGM();
+            AudioSystem.playSound('gameover');
+            try { if (game.score > highScore) { highScore = game.score; localStorage.setItem('snailHigh', highScore); DOM.highText.textContent = highScore; } } catch (e) {}
+            DOM.finalScore.textContent = game.score;
+            DOM.finalTime.textContent = game.survivalTime + 's';
+            DOM.finalHigh.textContent = highScore;
+            DOM.finalDifficulty.textContent = game.difficulty;
+            let stars, title;
+            if (game.score >= 2000) { stars = '<span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span>'; title = '终极呼吸大师 🐌👑'; }
+            else if (game.score >= 1000) { stars = '<span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star empty">★</span>'; title = '节奏收割者 🌿'; }
+            else if (game.score >= 500) { stars = '<span class="star">★</span><span class="star">★</span><span class="star">★</span><span class="star empty">★</span><span class="star empty">★</span>'; title = '陷阱舞者 🌱'; }
+            else if (game.score >= 100) { stars = '<span class="star">★</span><span class="star">★</span><span class="star empty">★</span><span class="star empty">★</span><span class="star empty">★</span>'; title = '勇敢小蜗 🍂'; }
+            else { stars = '<span class="star">★</span><span class="star empty">★</span><span class="star empty">★</span><span class="star empty">★</span><span class="star empty">★</span>'; title = '湿地新手'; }
+            DOM.starRating.innerHTML = stars;
+            DOM.finalTitle.textContent = title;
+            DOM.endOverlay.classList.remove('hidden');
+        }
+
+        function startGame() {
+            AudioSystem.initAudio();
+            AudioSystem.ensureCtx();
+            DOM.startOverlay.classList.add('hidden');
+            DOM.endOverlay.classList.add('hidden');
+            initGame();
+            gameRunning = true;
+            lastFrameTime = performance.now();
+            AudioSystem.startBGM();
+            AudioSystem.playSound('start');
+            animFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        function updateControlButtons() {
+            const musicOn = AudioSystem.getMusicState();
+            const sfxOn = AudioSystem.getSfxState();
+            DOM.musicToggle.className = `ctrl-btn ${musicOn ? 'active' : 'off'}`;
+            DOM.musicToggle.innerHTML = `<span class="badge">🎵</span> ${musicOn ? '音乐' : '静音'}`;
+            DOM.sfxToggle.className = `ctrl-btn ${sfxOn ? 'active' : 'off'}`;
+            DOM.sfxToggle.innerHTML = `<span class="badge">🔊</span> ${sfxOn ? '音效' : '静音'}`;
+        }
+
+        DOM.btnStart.addEventListener('click', startGame);
+        DOM.btnRestart.addEventListener('click', () => { if (gameRunning) startGame(); });
+        DOM.btnRestart2.addEventListener('click', startGame);
+        DOM.musicToggle.addEventListener('click', () => { AudioSystem.toggleMusic(); updateControlButtons(); });
+        DOM.sfxToggle.addEventListener('click', () => { AudioSystem.toggleSfx(); updateControlButtons(); });
+
+        function parseInputCoords(clientX, clientY) {
+            const rect = canvas.getBoundingClientRect();
+            mousePos.x = (clientX - rect.left) * (canvas.width / rect.width);
+            mousePos.y = (clientY - rect.top) * (canvas.height / rect.height);
+        }
+        canvas.addEventListener('touchmove', (e) => { if (e.touches.length > 0) parseInputCoords(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+        canvas.addEventListener('touchstart', (e) => { if (e.touches.length > 0) parseInputCoords(e.touches[0].clientX, e.touches[0].clientY); }, { passive: true });
+
+        updateControlButtons();
+    </script>
+</body>
+</html>
