@@ -97,7 +97,7 @@
     <script>
         'use strict';
         // ============================================================
-        //  音频系统 (完整保留)
+        //  音频系统
         // ============================================================
         const AudioSystem = (() => {
             let audioCtx = null, masterGain = null, musicGain = null, sfxGain = null;
@@ -127,7 +127,7 @@
         })();
 
         // ============================================================
-        //  DOM 与 游戏核心
+        //  DOM 引用
         // ============================================================
         const DOM = {
             canvas: document.getElementById('gameCanvas'),
@@ -154,6 +154,9 @@
         const canvas = DOM.canvas;
         const ctx = canvas.getContext('2d');
 
+        // ============================================================
+        //  配置
+        // ============================================================
         const CFG = {
             saltDamage: 20,
             beetleDmg: 15,
@@ -180,7 +183,6 @@
             droughtDuration: 8000,
             droughtMultiplier: 2.0,
             beetleMaxCount: 5,
-            // 甲虫感知追踪参数
             beetleDetectionRadius: 130,
             beetleChaseDuration: 4500,
             beetleIdleSpeed: 1.0,
@@ -190,9 +192,12 @@
             beetleChaseMaxSpeed: 1.3,
             beetleTurnNoise: 0.3,
             droughtDewRefreshRate: 0.3,
-            // 排斥力参数
             beetleRepulsionRadius: 35,
-            beetleRepulsionStrength: 0.8
+            beetleRepulsionStrength: 0.8,
+            // ---------- 露水保底参数 ----------
+            dewMinCount: 5,           // 正常时期最少露水数量
+            dewMaxCount: 8,           // 最多露水数量（防止溢出）
+            dewSpawnInterval: 3000    // 保底检查间隔（毫秒）
         };
 
         let highScore = 0;
@@ -206,12 +211,17 @@
         let mousePos = { x: 225, y: 350 };
         let lastFrameTime = performance.now();
 
+        // ============================================================
+        //  工具函数
+        // ============================================================
         function rand(min, max) { return Math.random() * (max - min) + min; }
         function randPos(pad = 40) { return { x: rand(pad, canvas.width - pad), y: rand(pad, canvas.height - pad) }; }
         function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
         function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
-        // ---- 陷阱 ----
+        // ============================================================
+        //  陷阱
+        // ============================================================
         function createTrap() {
             const baseRadius = rand(CFG.trapBaseRadiusMin, CFG.trapBaseRadiusMax);
             const amplitude = rand(CFG.trapBreatheAmplitudeMin, CFG.trapBreatheAmplitudeMax);
@@ -241,7 +251,9 @@
             return false;
         }
 
-        // ---- 粒子 ----
+        // ============================================================
+        //  粒子系统
+        // ============================================================
         function emitParticles(x, y, color, count = 8, speed = 2.5) {
             const maxAdd = Math.min(count, CFG.maxParticleCount - pool.particles.length);
             for (let i = 0; i < maxAdd; i++) { const angle = rand(0, Math.PI * 2); const spd = rand(0.5, speed); pool.particles.push({ x, y, vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd, life: rand(15, 25), maxLife: 25, r: rand(1.5, 3), color }); }
@@ -252,7 +264,9 @@
         function updateFloatTexts() { pool.floatTexts = pool.floatTexts.filter(t => { t.y += t.vy; t.life--; return t.life > 0; }); }
         function drawFloatTexts() { ctx.save(); ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center'; for (const t of pool.floatTexts) { ctx.globalAlpha = Math.min(1, t.life / 8); ctx.fillStyle = t.color; ctx.fillText(t.text, t.x, t.y); } ctx.restore(); }
 
-        // ---- 绘制 ----
+        // ============================================================
+        //  绘制函数
+        // ============================================================
         function drawTraps() {
             if (!game) return;
             for (const trap of game.traps) {
@@ -262,21 +276,23 @@
                 ctx.shadowBlur = 40;
                 ctx.shadowColor = 'rgba(180,80,255,0.3)';
                 ctx.strokeStyle = 'rgba(180,80,255,0.6)';
-                ctx.lineWidth = 3;
+                ctx.lineWidth = 2.5;
                 ctx.setLineDash([8, 12]);
                 ctx.beginPath();
                 ctx.arc(trap.x, trap.y, r, 0, Math.PI * 2);
                 ctx.stroke();
                 ctx.shadowBlur = 0;
-                ctx.fillStyle = 'rgba(120,40,200,0.08)';
+                ctx.fillStyle = 'rgba(120,40,200,0.06)';
                 ctx.beginPath();
                 ctx.arc(trap.x, trap.y, r, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.restore();
             }
         }
+
         function drawObjects() {
             const inTrap = (x, y) => isInsideAnyTrap(x, y);
+            // 露水
             for (const d of dewList) {
                 if (inTrap(d.x, d.y)) continue;
                 ctx.save();
@@ -291,6 +307,7 @@
                 ctx.fill();
                 ctx.restore();
             }
+            // 苔藓
             for (const m of mossList) {
                 if (inTrap(m.x, m.y)) continue;
                 ctx.save();
@@ -304,6 +321,7 @@
                 ctx.fill();
                 ctx.restore();
             }
+            // 叶片
             for (const p of plantList) {
                 if (inTrap(p.x, p.y)) continue;
                 ctx.save();
@@ -315,6 +333,7 @@
                 ctx.fill();
                 ctx.restore();
             }
+            // 盐晶
             for (const s of saltList) {
                 if (inTrap(s.x, s.y)) continue;
                 ctx.save();
@@ -330,14 +349,12 @@
                 ctx.fill();
                 ctx.restore();
             }
-            // ---- 甲虫绘制（增强外观） ----
+            // 甲虫（增强外观）
             for (const b of beetleList) {
                 if (inTrap(b.x, b.y)) continue;
                 ctx.save();
-                // 发光效果
                 ctx.shadowBlur = 18;
                 ctx.shadowColor = '#ff6622';
-                // 身体：橙红色，带渐变
                 const grad = ctx.createRadialGradient(b.x - 4, b.y - 4, 2, b.x, b.y, b.r + 2);
                 grad.addColorStop(0, '#ff8833');
                 grad.addColorStop(0.7, '#cc4411');
@@ -346,7 +363,6 @@
                 ctx.beginPath();
                 ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
                 ctx.fill();
-                // 甲壳花纹 (两条弧线)
                 ctx.shadowBlur = 0;
                 ctx.strokeStyle = 'rgba(255,200,100,0.5)';
                 ctx.lineWidth = 2;
@@ -356,7 +372,6 @@
                 ctx.beginPath();
                 ctx.arc(b.x + 3, b.y + 2, b.r * 0.4, Math.PI * 0.2, Math.PI * 1.0);
                 ctx.stroke();
-                // 眼睛 (白色底色+黑色瞳孔)
                 const eyeOff = b.r * 0.5;
                 ctx.fillStyle = '#fff';
                 ctx.beginPath();
@@ -372,7 +387,6 @@
                 ctx.beginPath();
                 ctx.arc(b.x + eyeOff + 1.5, b.y - 2, 2, 0, Math.PI * 2);
                 ctx.fill();
-                // 触角
                 ctx.strokeStyle = '#552200';
                 ctx.lineWidth = 2;
                 ctx.beginPath();
@@ -386,9 +400,19 @@
                 ctx.restore();
             }
         }
+
         function drawSnail() {
             if (!snail) return;
-            if (snail.trail.length > 1) { ctx.strokeStyle = 'rgba(68,221,255,0.2)'; ctx.lineWidth = 4; ctx.beginPath(); for (let i = 0; i < snail.trail.length; i++) { if (i === 0) ctx.moveTo(snail.trail[i].x, snail.trail[i].y); else ctx.lineTo(snail.trail[i].x, snail.trail[i].y); } ctx.stroke(); }
+            if (snail.trail.length > 1) {
+                ctx.strokeStyle = 'rgba(68,221,255,0.2)';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                for (let i = 0; i < snail.trail.length; i++) {
+                    if (i === 0) ctx.moveTo(snail.trail[i].x, snail.trail[i].y);
+                    else ctx.lineTo(snail.trail[i].x, snail.trail[i].y);
+                }
+                ctx.stroke();
+            }
             const sx = snail.x, sy = snail.y, r = snail.radius;
             ctx.save();
             if (snail.hitFlash > 0 && Math.floor(globalTick / 4) % 2 === 0) ctx.fillStyle = '#ff3333';
@@ -421,16 +445,60 @@
             ctx.restore();
         }
 
-        // ---- 游戏对象初始化 ----
+        // ============================================================
+        //  🌧️ 露水保底机制（核心新增）
+        // ============================================================
+        function ensureDewCount(dt) {
+            if (!game) return;
+            game.dewSpawnTimer += dt;
+            if (game.dewSpawnTimer < CFG.dewSpawnInterval) return;
+            game.dewSpawnTimer = 0;
+
+            // 计算当前可见露水数量（不在陷阱内的）
+            const visibleDew = dewList.filter(d => !isInsideAnyTrap(d.x, d.y)).length;
+
+            // 干旱时目标数量减少
+            const targetCount = game.isDrought ? Math.floor(CFG.dewMinCount * 0.4) : CFG.dewMinCount;
+
+            if (visibleDew < targetCount) {
+                // 补充数量：不超过 dewMaxCount，且一次最多补充 dewMinCount 个
+                const toAdd = Math.min(CFG.dewMaxCount - visibleDew, CFG.dewMinCount);
+                for (let i = 0; i < toAdd; i++) {
+                    let pos;
+                    let attempts = 0;
+                    do {
+                        pos = randPos(30);
+                        attempts++;
+                    } while (isInsideAnyTrap(pos.x, pos.y) && attempts < 20);
+                    dewList.push({ ...pos, r: 7 });
+                }
+                // 可选：添加提示（可注释）
+                // addFloatText(canvas.width/2, canvas.height-30, `🌱 露水补充 +${toAdd}`, '#44ccff');
+            }
+        }
+
+        // ============================================================
+        //  游戏对象初始化
+        // ============================================================
         function initGameObjects() {
             dewList = []; mossList = []; saltList = []; plantList = []; beetleList = [];
             pool.particles = []; pool.floatTexts = [];
-            for (let i = 0; i < 5; i++) dewList.push({ ...randPos(), r: 7 });
+            // 初始生成露水（确保足够）
+            for (let i = 0; i < CFG.dewMinCount; i++) {
+                let pos;
+                let attempts = 0;
+                do {
+                    pos = randPos(30);
+                    attempts++;
+                } while (isInsideAnyTrap(pos.x, pos.y) && attempts < 20);
+                dewList.push({ ...pos, r: 7 });
+            }
             for (let i = 0; i < 2; i++) mossList.push({ ...randPos(), r: 13 });
             for (let i = 0; i < 2; i++) saltList.push({ ...randPos(), r: 11 });
             for (let i = 0; i < 3; i++) plantList.push({ ...randPos(), r: 9 });
             spawnBeetle(1);
         }
+
         function spawnBeetle(count = 1) {
             if (beetleList.length >= CFG.beetleMaxCount) return;
             const maxToSpawn = Math.min(count, CFG.beetleMaxCount - beetleList.length);
@@ -438,7 +506,7 @@
                 const p = randPos(60);
                 const angle = rand(0, Math.PI * 2);
                 beetleList.push({
-                    x: p.x, y: p.y, r: 14, // 增大半径
+                    x: p.x, y: p.y, r: 14,
                     state: 'idle',
                     chaseTimer: 0,
                     idleVx: Math.cos(angle) * CFG.beetleIdleSpeed,
@@ -448,13 +516,16 @@
             }
         }
 
-        // ---- 核心引擎 ----
+        // ============================================================
+        //  核心游戏引擎
+        // ============================================================
         function initGame() {
             game = {
                 score: 0, timeStart: Date.now(), survivalTime: 0,
                 hp: 100, wet: 100, difficulty: 1, difficultyTimer: 0,
                 traps: [], trapSpawnTimer: 0,
-                droughtTimer: 0, isDrought: false
+                droughtTimer: 0, isDrought: false,
+                dewSpawnTimer: 0  // 露水保底计时器
             };
             snail = { x: 225, y: 350, radius: 13, trail: [], hitFlash: 0, beetleHitCd: 0 };
             initGameObjects();
@@ -524,7 +595,7 @@
 
             const isVisible = (x, y) => !isInsideAnyTrap(x, y);
 
-            // ---- 露水收集（干旱时刷新变慢） ----
+            // ---- 露水收集 ----
             for (let i = dewList.length - 1; i >= 0; i--) {
                 const d = dewList[i];
                 if (!isVisible(d.x, d.y)) continue;
@@ -538,13 +609,23 @@
                         shouldRefresh = false;
                     }
                     if (shouldRefresh) {
-                        dewList[i] = { ...randPos(), r: 7 };
+                        // 刷新到新位置（避开陷阱）
+                        let pos;
+                        let attempts = 0;
+                        do {
+                            pos = randPos(30);
+                            attempts++;
+                        } while (isInsideAnyTrap(pos.x, pos.y) && attempts < 20);
+                        dewList[i] = { ...pos, r: 7 };
                     } else {
                         dewList.splice(i, 1);
                     }
                     addFloatText(d.x, d.y, `💧 +10`, '#44ccff');
                 }
             }
+
+            // ---- 露水保底（确保场上始终有足够露水） ----
+            ensureDewCount(dt);
 
             // ---- 其他收集物 ----
             mossList.forEach((m, idx) => {
@@ -587,13 +668,11 @@
                 CFG.beetleChaseSpeedBase + game.difficulty * CFG.beetleChaseSpeedPerLevel,
                 CFG.beetleChaseMaxSpeed
             );
-            // 先计算每个甲虫的目标移动（追踪/空闲），再统一叠加排斥力
             const moves = beetleList.map(b => {
                 const dxb = snail.x - b.x;
                 const dyb = snail.y - b.y;
                 const distToSnail = Math.hypot(dxb, dyb);
                 let moveX = 0, moveY = 0;
-                // 状态切换
                 if (b.state === 'idle') {
                     if (distToSnail < CFG.beetleDetectionRadius) {
                         b.state = 'chasing';
@@ -609,7 +688,6 @@
                         b.idleChangeTimer = rand(0, CFG.beetleIdleChangeInterval);
                     }
                 }
-                // 计算基础移动
                 if (b.state === 'chasing') {
                     if (distToSnail > 1) {
                         let angle = Math.atan2(dyb, dxb);
@@ -632,18 +710,18 @@
                 return { beetle: b, moveX, moveY };
             });
 
-            // 叠加排斥力（多次迭代效果更好）
+            // 排斥力迭代
             for (let iter = 0; iter < 2; iter++) {
                 for (let i = 0; i < moves.length; i++) {
                     for (let j = i + 1; j < moves.length; j++) {
                         const a = moves[i].beetle, b = moves[j].beetle;
                         const dx = a.x - b.x;
                         const dy = a.y - b.y;
-                        const dist = Math.hypot(dx, dy);
-                        if (dist < CFG.beetleRepulsionRadius && dist > 0.1) {
-                            const force = (CFG.beetleRepulsionRadius - dist) / CFG.beetleRepulsionRadius * CFG.beetleRepulsionStrength;
-                            const fx = (dx / dist) * force;
-                            const fy = (dy / dist) * force;
+                        const d = Math.hypot(dx, dy);
+                        if (d < CFG.beetleRepulsionRadius && d > 0.1) {
+                            const force = (CFG.beetleRepulsionRadius - d) / CFG.beetleRepulsionRadius * CFG.beetleRepulsionStrength;
+                            const fx = (dx / d) * force;
+                            const fy = (dy / d) * force;
                             moves[i].moveX += fx;
                             moves[i].moveY += fy;
                             moves[j].moveX -= fx;
@@ -653,7 +731,6 @@
                 }
             }
 
-            // 应用移动并边界处理
             moves.forEach(({ beetle: b, moveX, moveY }) => {
                 b.x += moveX;
                 b.y += moveY;
@@ -665,7 +742,6 @@
                     b.y = clamp(b.y, b.r, canvas.height - b.r);
                     if (b.state === 'idle') b.idleVy *= -1;
                 }
-                // 碰撞检测
                 if (isVisible(b.x, b.y) && dist(snail, b) < snail.radius + b.r && snail.beetleHitCd <= 0) {
                     AudioSystem.playSound('beetle');
                     snail.beetleHitCd = CFG.beetleHitCd;
@@ -705,7 +781,7 @@
             }
             if (game && game.isDrought) {
                 ctx.save();
-                ctx.fillStyle = 'rgba(255,100,0,0.08)';
+                ctx.fillStyle = 'rgba(255,100,0,0.06)';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.fillStyle = '#ff8822';
                 ctx.font = 'bold 14px system-ui';
@@ -758,6 +834,9 @@
             animFrameId = requestAnimationFrame(gameLoop);
         }
 
+        // ============================================================
+        //  UI 控制
+        // ============================================================
         function updateControlButtons() {
             const musicOn = AudioSystem.getMusicState();
             const sfxOn = AudioSystem.getSfxState();
@@ -767,6 +846,9 @@
             DOM.sfxToggle.innerHTML = `<span class="badge">🔊</span> ${sfxOn ? '音效' : '静音'}`;
         }
 
+        // ============================================================
+        //  事件绑定
+        // ============================================================
         DOM.btnStart.addEventListener('click', startGame);
         DOM.btnRestart.addEventListener('click', () => { if (gameRunning) startGame(); });
         DOM.btnRestart2.addEventListener('click', startGame);
